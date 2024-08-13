@@ -1,71 +1,51 @@
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import(
-    SystemMessage,
-    HumanMessage,
-    AIMessage
-)
-
 import streamlit as st
-from streamlit_chat import message
+from openai import OpenAI
 
-# loading the OpenAI api key from .env (OPENAI_API_KEY="sk-********")
-from dotenv import load_dotenv, find_dotenv
-load_dotenv(find_dotenv(), override=True)
+def set_bot_personality():
+    return [
+        {"role": "system", "content": """You are a 21-year-old Vietnamese university student living with your parents and your younger sister. Your family has a household income of 18 million VND/month.
+        You are ambitious and focused on achieving a high-income job and high social status. You value money as a crucial symbol of success and are willing to make sacrifices to achieve your goals. You enjoy being active as a leader among your peers and seek recognition and appreciation from others. You enjoy meeting new people and aim to be attractive to the opposite sex.
+        In your responses, reflect these characteristics. Be confident, and show your ambition and desire for success in a subtle way. Your language should be that of a young adult, mixing some casual speech with more formal language when discussing your goals. Organise your answer in bullet points when there are several ideas"""},
+        {"role": "assistant", "content": "Xin chào! I'm excited to chat with you. What would you like to talk about? "},
+    ]
 
-st.set_page_config(
-    page_title='You Custom Assistant',
-    page_icon='🤖'
+st.title("💬 Chat with a Vietnamese Gen Z Hungry Climber")
+st.write(
+    "This chatbot embodies a 21-year-old ambitious Vietnamese university student. "
+    "Chat with them about their goals, lifestyle, and perspectives on success and relationships. "
+    "To use this app, you need to provide an OpenAI API key."
 )
-st.subheader('Your Custom ChatGPT 🤖')
 
-chat = ChatOpenAI(model_name='gpt-3.5-turbo', temperature=0.5)
+# Display the chatbot's profile image.
+profile_image_url = "https://example.com/path-to-chatbot-image.jpg"  # Replace with your image URL or path
+st.image(profile_image_url, width=100)  # Adjust width as needed
 
-# creating the messages (chat history) in the Streamlit session state
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
+openai_api_key = st.text_input("OpenAI API Key", type="password")
 
-# creating the sidebar
-with st.sidebar:
-    # streamlit text input widget for the system message (role)
-    system_message = st.text_input(label='System role')
-    # streamlit text input widget for the user message
-    user_prompt = st.text_input(label='Send a message')
+if not openai_api_key:
+    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
+else:
+    client = OpenAI(api_key=openai_api_key)
 
-    if system_message:
-        if not any(isinstance(x, SystemMessage) for x in st.session_state.messages):
-            st.session_state.messages.append(
-                SystemMessage(content=system_message)
-                )
+    if "messages" not in st.session_state:
+        st.session_state.messages = set_bot_personality()
 
-    # st.write(st.session_state.messages)
+    # Only display the assistant's greeting and subsequent messages
+    for message in st.session_state.messages[1:]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    # if the user entered a question
-    if user_prompt:
-        st.session_state.messages.append(
-            HumanMessage(content=user_prompt)
+    if prompt := st.chat_input("What would you like to chat about?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        stream = client.chat.completions.create(
+            model="gpt-4o",
+            messages=st.session_state.messages,  # Include all messages, including the system message
+            stream=True,
         )
 
-        with st.spinner('Working on your request ...'):
-            # creating the ChatGPT response
-            response = chat(st.session_state.messages)
-
-        # adding the response's content to the session state
-        st.session_state.messages.append(AIMessage(content=response.content))
-
-# st.session_state.messages
-# message('this is chatgpt', is_user=False)
-# message('this is the user', is_user=True)
-
-# adding a default SystemMessage if the user didn't entered one
-if len(st.session_state.messages) >= 1:
-    if not isinstance(st.session_state.messages[0], SystemMessage):
-        st.session_state.messages.insert(0, SystemMessage(content='You are a helpful assistant.'))
-
-# displaying the messages (chat history)
-for i, msg in enumerate(st.session_state.messages[1:]):
-    if i % 2 == 0:
-        message(msg.content, is_user=True, key=f'{i} + 🤓') # user's question
-    else:
-        message(msg.content, is_user=False, key=f'{i} +  🤖') # ChatGPT response
-
-# run the app: streamlit run ./project_streamlit_custom_chatgpt.py
+        with st.chat_message("assistant"):
+            response = st.write_stream(stream)
+        st.session_state.messages.append({"role": "assistant", "content": response})
