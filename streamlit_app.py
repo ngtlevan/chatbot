@@ -1,56 +1,71 @@
-import streamlit as st
-from openai import OpenAI
-
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+from langchain.chat_models import ChatOpenAI
+from langchain.schema import(
+    SystemMessage,
+    HumanMessage,
+    AIMessage
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+import streamlit as st
+from streamlit_chat import message
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# loading the OpenAI api key from .env (OPENAI_API_KEY="sk-********")
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(), override=True)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+st.set_page_config(
+    page_title='You Custom Assistant',
+    page_icon='🤖'
+)
+st.subheader('Your Custom ChatGPT 🤖')
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+chat = ChatOpenAI(model_name='gpt-3.5-turbo', temperature=0.5)
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# creating the messages (chat history) in the Streamlit session state
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# creating the sidebar
+with st.sidebar:
+    # streamlit text input widget for the system message (role)
+    system_message = st.text_input(label='System role')
+    # streamlit text input widget for the user message
+    user_prompt = st.text_input(label='Send a message')
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
+    if system_message:
+        if not any(isinstance(x, SystemMessage) for x in st.session_state.messages):
+            st.session_state.messages.append(
+                SystemMessage(content=system_message)
+                )
+
+    # st.write(st.session_state.messages)
+
+    # if the user entered a question
+    if user_prompt:
+        st.session_state.messages.append(
+            HumanMessage(content=user_prompt)
         )
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        with st.spinner('Working on your request ...'):
+            # creating the ChatGPT response
+            response = chat(st.session_state.messages)
+
+        # adding the response's content to the session state
+        st.session_state.messages.append(AIMessage(content=response.content))
+
+# st.session_state.messages
+# message('this is chatgpt', is_user=False)
+# message('this is the user', is_user=True)
+
+# adding a default SystemMessage if the user didn't entered one
+if len(st.session_state.messages) >= 1:
+    if not isinstance(st.session_state.messages[0], SystemMessage):
+        st.session_state.messages.insert(0, SystemMessage(content='You are a helpful assistant.'))
+
+# displaying the messages (chat history)
+for i, msg in enumerate(st.session_state.messages[1:]):
+    if i % 2 == 0:
+        message(msg.content, is_user=True, key=f'{i} + 🤓') # user's question
+    else:
+        message(msg.content, is_user=False, key=f'{i} +  🤖') # ChatGPT response
+
+# run the app: streamlit run ./project_streamlit_custom_chatgpt.py
